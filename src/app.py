@@ -8,7 +8,9 @@ for extracurricular activities at Mergington High School.
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
+import json
 import os
+from copy import deepcopy
 from pathlib import Path
 
 app = FastAPI(title="Mergington High School API",
@@ -19,8 +21,7 @@ current_dir = Path(__file__).parent
 app.mount("/static", StaticFiles(directory=os.path.join(Path(__file__).parent,
           "static")), name="static")
 
-# In-memory activity database
-activities = {
+DEFAULT_ACTIVITIES = {
     "Chess Club": {
         "description": "Learn strategies and compete in chess tournaments",
         "schedule": "Fridays, 3:30 PM - 5:00 PM",
@@ -77,6 +78,33 @@ activities = {
     }
 }
 
+ACTIVITIES_FILE = current_dir / "activities.json"
+
+
+def load_activities():
+    """Load activities from disk or initialize them if the storage file does not exist."""
+    if ACTIVITIES_FILE.exists():
+        try:
+            with ACTIVITIES_FILE.open("r", encoding="utf-8") as file_handle:
+                loaded_data = json.load(file_handle)
+            if isinstance(loaded_data, dict):
+                return loaded_data
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    save_activities(deepcopy(DEFAULT_ACTIVITIES))
+    return deepcopy(DEFAULT_ACTIVITIES)
+
+
+def save_activities(data):
+    """Persist activities to disk."""
+    with ACTIVITIES_FILE.open("w", encoding="utf-8") as file_handle:
+        json.dump(data, file_handle, indent=2)
+        file_handle.write("\n")
+
+
+activities = load_activities()
+
 
 @app.get("/")
 def root():
@@ -107,6 +135,7 @@ def signup_for_activity(activity_name: str, email: str):
 
     # Add student
     activity["participants"].append(email)
+    save_activities(activities)
     return {"message": f"Signed up {email} for {activity_name}"}
 
 
@@ -129,4 +158,5 @@ def unregister_from_activity(activity_name: str, email: str):
 
     # Remove student
     activity["participants"].remove(email)
+    save_activities(activities)
     return {"message": f"Unregistered {email} from {activity_name}"}
